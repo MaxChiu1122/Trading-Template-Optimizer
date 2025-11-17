@@ -54,8 +54,7 @@ pip install -r requirements.txt
 TA-Lib is required for technical analysis indicators. Installation varies by platform:
 
 #### Windows
-1. Download the appropriate `.whl` file from [Unofficial Windows Binaries](https://www.lfd.uci.edu/~gohlke/pythonlibs/#ta-lib)
-2. Install using pip:
+
 ```bash
 pip install TA_Lib-0.4.24-cp39-cp39-win_amd64.whl  # Adjust version for your Python version
 ```
