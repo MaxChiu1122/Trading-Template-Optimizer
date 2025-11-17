@@ -134,7 +134,7 @@ Optimization results will be written to the "Optimization" and "Train" sheets, s
 ## 📁 Project Structure
 
 ```
-excel-trading-optimizer/
+Trading-Template-Optimizer/
 ├── main.py                    # Main entry point and workflow orchestration
 ├── strategy.py               # Strategy logic evaluation and trade generation
 ├── optimizer.py              # Rolling window optimization with Hyperopt
