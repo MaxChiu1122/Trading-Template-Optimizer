@@ -150,7 +150,6 @@ results = strategy_from_logic(df, rules, params, max_position=5)
 
 ---
 **Version**: 1.0  
-**Last Updated**: October 27, 2025  
-**Author**: Trading Strategy Optimizer Team
+**Last Updated**: October 27, 2025
 
 
