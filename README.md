@@ -1,4 +1,4 @@
-# Excel Trading Strategy Optimizer
+# Trading Strategy Optimizer
 
 A comprehensive Python-based trading strategy backtester and optimizer that uses Excel for configuration and provides robust performance analysis with visualization capabilities. This system enables traders and quantitative analysts to design, test, and optimize trading strategies through an intuitive Excel interface.
 
