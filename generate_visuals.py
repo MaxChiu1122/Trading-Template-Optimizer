@@ -54,7 +54,7 @@ def plot_visualization(
     # --- Matplotlib Plot for Excel ---
     fig, axs = plt.subplots(
         4, 1, figsize=(12, 14), sharex=True,
-        gridspec_kw={'height_ratios': [3, 1, 2, 1]}
+        gridspec_kw={'height_ratios': [3, 1, 2, 1.5]}
     )
 
     # --- Price with Pt and Buy/Sell Signals ---
@@ -88,7 +88,9 @@ def plot_visualization(
     # --- Drawdown ---
     axs[3].fill_between(equity.index, equity["Drawdown"], 0, color="red", alpha=0.5)
     axs[3].set_title("Drawdown")
-    axs[3].set_ylim([-1, 0])
+    # Autoscale y-axis based on actual drawdown data with some padding
+    min_dd = equity["Drawdown"].min()
+    axs[3].set_ylim([min_dd * 1.1 if min_dd < 0 else min_dd * 0.9, 0])
 
     # --- Formatting ---
     for ax in axs:

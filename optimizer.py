@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import random
 from hyperopt import fmin, tpe, hp, Trials, STATUS_OK
 from strategy import parse_strategy_logic, strategy_from_logic
 from performance_metrics import calculate_performance_metrics
@@ -87,13 +88,24 @@ def metric_key_map():
         'AccReturn': 'Return [%]',
         'Sharpe': 'Sharpe Ratio',
         'Max Drawdown': 'Max Drawdown [%]',
-        'Accuracy': 'Win Rate [%]',
-        'SqrtMSE': 'SqrtMSE',
+        'Win Rate [%]': 'Win Rate [%]',
+        'SqrtMSE [%]': 'SqrtMSE [%]',
+        'Accuracy': 'Accuracy [%]',
     }
 
 
-def optimize_strategy(config):
-    """Run rolling window optimization and return metrics, trades, and best params for each window."""
+def optimize_strategy(config, max_position: int = 3):
+    """Run rolling window optimization and return metrics, trades, and best params for each window.
+    
+    Args:
+        config: Configuration dictionary with strategy parameters
+        max_position: Maximum position limit (default: 3). Caps positions at ±max_position
+    """
+    # Set random seeds for reproducibility
+    random_seed = config.get("random_seed", 42)
+    np.random.seed(random_seed)
+    random.seed(random_seed)
+    
     excel_path = config.get("excel_path", "excel/trading_template.xlsx")
     df_all_orig = config["market_data"].copy()
     logic_df = config["logic_table"]
@@ -139,14 +151,19 @@ def optimize_strategy(config):
         trial_indicator_snapshots = []  # Store indicator DataFrame for each trial in this window
 
         def objective(params):
-            param_dict = {p: param_types[p](params[p]) for p in optimize_params}
+            # Start with initial parameter values from config (includes all parameters)
+            param_dict = config.get("param_map", {}).copy()
+            # Update with optimized values for parameters being optimized
+            for p in optimize_params:
+                param_dict[p] = param_types[p](params[p])
             # Build indicators for this parameter set
             train_df_local = train_df.copy()
             train_df_local = build_indicators(train_df_local, param_dict, builder_df=builder_df, talib_df=talib_df)
             # Store a snapshot of indicators for this trial
             trial_indicator_snapshots.append((param_dict.copy(), train_df_local.copy()))
             rule_dict = parse_strategy_logic(logic_df)
-            result_df = strategy_from_logic(train_df_local, rule_dict)
+            force_same_day_exit = config.get("force_same_day_exit", False)
+            result_df = strategy_from_logic(train_df_local, rule_dict, param_dict, max_position=max_position, force_same_day_exit=force_same_day_exit)
             metrics = calculate_performance_metrics(result_df, train_df_local)
             key_map = metric_key_map()
             score = 0
@@ -164,15 +181,22 @@ def optimize_strategy(config):
             for p in optimize_params if p in param_ranges
         }
         trials = Trials()
-        best = fmin(fn=objective, space=search_space, algo=tpe.suggest, max_evals=max_evals, trials=trials)
+        # Set random state for TPE algorithm to ensure reproducibility
+        best = fmin(fn=objective, space=search_space, algo=tpe.suggest, max_evals=max_evals, trials=trials, rstate=np.random.default_rng(random_seed))
         # Cast best params to correct type
         best = {k: param_types[k](v) for k, v in best.items()}
 
         # --- Train set metrics/trades ---
+        # Start with initial parameter values and update with best optimized values
+        train_param_dict = config.get("param_map", {}).copy()
+        for p in optimize_params:
+            if p in best:
+                train_param_dict[p] = best[p]
         train_df_local = train_df.copy()
-        train_df_local = build_indicators(train_df_local, best, builder_df=builder_df, talib_df=talib_df)
+        train_df_local = build_indicators(train_df_local, train_param_dict, builder_df=builder_df, talib_df=talib_df)
         rule_dict = parse_strategy_logic(logic_df)
-        train_result_df = strategy_from_logic(train_df_local, rule_dict)
+        force_same_day_exit = config.get("force_same_day_exit", False)
+        train_result_df = strategy_from_logic(train_df_local, rule_dict, train_param_dict, max_position=max_position, force_same_day_exit=force_same_day_exit)
         train_metrics = calculate_performance_metrics(train_result_df, train_df_local)
         eq_final_tr = train_metrics.get("Equity Final [$]", None)
         eq_start_tr = train_metrics.get("Equity Start [$]", None)
@@ -192,12 +216,18 @@ def optimize_strategy(config):
         })
 
         # --- Test set metrics/trades ---
+        # Start with initial parameter values and update with best optimized values
+        test_param_dict = config.get("param_map", {}).copy()
+        for p in optimize_params:
+            if p in best:
+                test_param_dict[p] = best[p]
         test_df_local = test_df.copy()
-        test_df_local = build_indicators(test_df_local, best, builder_df=builder_df, talib_df=talib_df)
+        test_df_local = build_indicators(test_df_local, test_param_dict, builder_df=builder_df, talib_df=talib_df)
         # Save a copy of the test set DataFrame with all indicators
         test_indicator_dfs.append(test_df_local.copy())
         rule_dict = parse_strategy_logic(logic_df)
-        test_result_df = strategy_from_logic(test_df_local, rule_dict)
+        force_same_day_exit = config.get("force_same_day_exit", False)
+        test_result_df = strategy_from_logic(test_df_local, rule_dict, test_param_dict, max_position=max_position, force_same_day_exit=force_same_day_exit)
         test_metrics = calculate_performance_metrics(test_result_df, test_df_local)
         eq_final = test_metrics.get("Equity Final [$]", None)
         eq_start = test_metrics.get("Equity Start [$]", None)

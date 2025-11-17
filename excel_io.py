@@ -284,6 +284,39 @@ def read_dashboard_inputs(file_path: str) -> dict:
     bt_row, bt_col = find_anchor(ws, "Duration")
     config["start_date"] = pd.to_datetime(ws.cell(row=bt_row + 1, column=bt_col + 1).value)
     config["end_date"] = pd.to_datetime(ws.cell(row=bt_row + 2, column=bt_col + 1).value)
+    
+    # Read trade mode setting (INTRADAY or MULTIDAY)
+    # Default: Let logic table control exits (force_same_day_exit = False)
+    trade_mode_value = ws.cell(row=bt_row + 3, column=bt_col + 1).value
+    if trade_mode_value:
+        trade_mode = str(trade_mode_value).strip().upper()
+        # Accept various formats: INTRADAY, MULTIDAY, MULTI-DAY, etc.
+        if "FORCE" in trade_mode or "AUTO" in trade_mode:
+            # FORCE_INTRADAY or AUTO_CLOSE: Override logic table, force same-day exit
+            config["trade_mode"] = "FORCE_INTRADAY"
+            config["force_same_day_exit"] = True
+        elif "MULTI" in trade_mode:
+            config["trade_mode"] = "MULTIDAY"
+            config["force_same_day_exit"] = False
+        else:
+            # INTRADAY or LOGIC: Use logic table to control exits
+            config["trade_mode"] = "LOGIC_BASED"
+            config["force_same_day_exit"] = False
+    else:
+        # Default: Use logic table to control exits
+        config["trade_mode"] = "LOGIC_BASED"
+        config["force_same_day_exit"] = False
+    print(f"[INFO] Trade Mode: {config['trade_mode']} (Force same-day exit: {config['force_same_day_exit']})")
+    
+    # Filter market_data by start_date and end_date
+    if "Date" in market_df.columns:
+        market_df["Date"] = pd.to_datetime(market_df["Date"])
+        market_df = market_df[
+            (market_df["Date"] >= config["start_date"]) & 
+            (market_df["Date"] <= config["end_date"])
+        ].reset_index(drop=True)
+        config["market_data"] = market_df  # Update with filtered data
+        print(f"[INFO] Filtered market data from {config['start_date'].date()} to {config['end_date'].date()}: {len(market_df)} rows")
 
     # --- Step 6: Extract Train-Test Settings (anchor: "Settings") ---
     train_row, train_col = find_anchor(ws, "Settings")
@@ -303,16 +336,24 @@ def read_dashboard_inputs(file_path: str) -> dict:
     # --- Step 8: Objective metrics and weights (anchor: "Optimization Metric") ---
     obj_row, obj_col = find_anchor(ws, "Optimization Metric")
     objective_weights = {}
-    for r in range(obj_row + 1, obj_row + 6):
+    for r in range(obj_row + 1, obj_row + 7):
         metric = ws.cell(row=r, column=obj_col).value
         weight = ws.cell(row=r, column=obj_col + 1).value
         if metric and weight is not None:
             objective_weights[str(metric).strip()] = float(weight)
     config["objective_weights"] = objective_weights
 
+    # --- Step 8.5: Random Seed for reproducibility ---
+    random_seed_row, random_seed_col = find_anchor(ws, "Random Seed")
+    if random_seed_row and random_seed_col:
+        random_seed_val = ws.cell(row=random_seed_row, column=random_seed_col + 1).value
+        config["random_seed"] = int(random_seed_val) if random_seed_val is not None else 42
+    else:
+        config["random_seed"] = 42  # Default seed
+
     # --- Step 9: Extract Strategy Logic Builder (anchor: "Rule Type") ---
     # Only extract and validate after market_data is updated with all indicators
-    logic_df = extract_table(ws, "Rule Type", max_cols=7, max_rows=100)
+    logic_df = extract_table(ws, "Rule Type", max_cols=8, max_rows=100)  # Increased to support Position column
     config["logic_table"] = logic_df
 
     # --- Step 10: Validate columns in logic table ---
